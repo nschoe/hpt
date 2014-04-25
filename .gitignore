@@ -1,0 +1,10 @@
+*.hi
+*.o
+*~
+dist/
+.cabal-sandbox/
+*.save0
+cabal.sandbox.config
+bin/
+share/
+path-hpt.sh
