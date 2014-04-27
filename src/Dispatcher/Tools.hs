@@ -1,7 +1,7 @@
 module Dispatcher.Tools (
-              usage
-             , version
-             ) where
+                          usage
+                        , version
+                        ) where
 
 -- | Define some useful functions and wrappers for hpt
 
@@ -9,6 +9,7 @@ module Dispatcher.Tools (
 usage :: String
 usage = concat [ "Usage : \t-h, --help : display this message.\n"
                , "\t\t-v, --version : display hpt-dispatcher's version and stability.\n"
+               , "\t\t-s, --start : start the dispatcher server.\n"
                ]
 
 -- | Version and stability information about hpt
