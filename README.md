@@ -18,16 +18,17 @@ application, it is, period.
 
 ## Changelog ##
 
-- April 25, 2014
-    - Creation of the project
-    - Defined primary objectives and system architecture
-    - Defined types
-
 - April 29, 2014
     - Created self-signed certificate for the dispatcher (for testing
       purpose)
     - Implemented client signing / registering procedures (Born
       request)
+
+- April 25, 2014
+    - Creation of the project
+    - Defined primary objectives and system architecture
+    - Defined types
+
 
 ## TODO ##
 
