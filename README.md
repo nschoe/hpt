@@ -22,3 +22,15 @@ application, it is, period.
     - Creation of the project
     - Defined primary objectives and system architecture
     - Defined types
+
+- April 29, 2014
+    - Created self-signed certificate for the dispatcher (for testing
+      purpose)
+    - Implemented client signing / registering procedures (Born
+      request)
+
+## TODO ##
+
+- Rewrite functions with Exception handling (e.g. getPrivateKeyFile,
+  etc)
+- Encrypt the registered.db file in the dispatcher

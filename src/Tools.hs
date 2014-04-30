@@ -1,7 +1,11 @@
 module Tools (
               usage
              , version
+             , success
+             , failed
              ) where
+
+import           System.Console.ANSI
 
 -- | Define some useful functions and wrappers for hpt
 
@@ -20,3 +24,17 @@ version = concat [ "hpt - Haskell Private Talk version 0.1.0\n"
                    \Please use for development and non-critical applications only.\n"
                  , "Author : Nicolas Schoemaeker (nschoe) <ns.schoe@gmail.com>\n"
                  ]
+
+-- | Eye-candy terminal formatting to print "success" in green
+success :: String -> IO ()
+success str = do
+  setSGR [SetColor Foreground Vivid Green]
+  putStr str
+  setSGR [Reset]
+
+-- | Eye-candy terminal formatting to print failed" in red
+failed :: String -> IO ()
+failed str = do
+  setSGR [SetColor Foreground Vivid Red]
+  putStr str
+  setSGR [Reset]
