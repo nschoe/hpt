@@ -14,10 +14,10 @@ import qualified Data.ByteString.Lazy as L (toStrict, hPut)
 import Data.Binary (encode)
 import Network.Simple.TCP.TLS (Context, send)
 import Types (ClientState(..), Contact(..), DispatcherRequest(..))
-import           System.Directory (getAppUserDataDirectory, getPermissions, readable, doesDirectoryExist, doesFileExist)
+import           System.Directory (getAppUserDataDirectory, getPermissions, readable, doesDirectoryExist, doesFileExist, createDirectoryIfMissing)
 import           System.Environment (getProgName)
 import System.FilePath ((</>))
-import Types (ContactList)
+import Types (ContactList, UserName)
 import System.IO (withFile, IOMode(..))
 
 -- | Port on which the dispatcher listens to for incoming connection
@@ -43,8 +43,8 @@ keepAlive context state = do
   send context (L.toStrict $ encode req)
 
 -- | Path to the file containing the saved contact list
-getContactListDb :: IO (Either String FilePath)
-getContactListDb = do
+getContactListDb :: UserName -> IO (Either String FilePath)
+getContactListDb username  = do
   -- get user's app data directory
   dataDir <- getProgName >>= getAppUserDataDirectory
 
@@ -54,8 +54,12 @@ getContactListDb = do
       return (Left "User app data doesn't exist.")
   else
       do
+        -- create user directory if it doesn't exist
+        let userDir = dataDir </> username
+        createDirectoryIfMissing False userDir
+
         -- Check if db exists
-        let dbFile = dataDir </> "contactList.db"
+        let dbFile = userDir </> (username ++ ".contactList.db")
         dbExists <- doesFileExist dbFile
         if not dbExists then
             do
@@ -66,7 +70,8 @@ getContactListDb = do
             return (Right dbFile)
 
 -- | Write the contact list to file
-saveContactList :: FilePath -> ContactList -> IO ()
-saveContactList dbFile contacts = do
+saveContactList :: ClientState -> ContactList -> IO ()
+saveContactList state contacts = do
+  dbFile <- atomically $ readTVar (csContactListDb state)
   let !encoded = encode contacts
   withFile dbFile WriteMode (flip L.hPut encoded)

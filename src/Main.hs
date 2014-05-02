@@ -69,40 +69,19 @@ hpt hostname = withSocketsDo $ do
         let clientSettings = makeClientSettings [] (Just hostname) (certificateStore <> cStore)
         success "success.\n"
 
-        -- Parse contact list
-        putStr "Reading contact list..."
-        db <- getContactListDb
-        contactListDb <- case db of
-                    Left err ->
-                        do
-                          failed ("failed\n" ++ err ++ "\n")
-                          exitFailure
-                    Right file ->
-                        return file
-        success "success\n"
-
-        -- Creating contact list from file
-        putStr "Building contact list..."
-        raw <- withFile contactListDb ReadMode $ \h ->
-               do !contents <- L.hGetContents h
-                  return contents
-
-        let list = case L.null raw of
-                            True -> []
-                            False -> decode raw :: ContactList
-        success "success\n"
-
         -- Create internal state
         putStr "Initializing internal state..."
         conversations <- atomically $ newTVar (Map.empty)
-        contactList   <- atomically $ newTVar list
+        contactList   <- atomically $ newTVar []
         chanCommands  <- atomically $ newTChan
+        currentChat   <- atomically $ newTVar Nothing
+        contactListDb <- atomically $ newTVar ""
 
         let state = ClientState {
                                  csConversations = conversations
                                , csContactList   = contactList
                                , csCommands      = chanCommands
-                               , csCurrentChat   = Nothing
+                               , csCurrentChat   = currentChat
                                , csContactListDb = contactListDb
                                }
         success "success\n"
@@ -118,6 +97,9 @@ hpt hostname = withSocketsDo $ do
 
         -- When we successfully reached the Dispatcher and logged in, continue
         when isAuthSuccessful $ loop state
+
+        -- Exit when auth was not successfull
+        putStrLn "Authentification was not successful"
                      
         putStrLn "\nClient exiting.\n"
             where
@@ -163,7 +145,7 @@ hpt hostname = withSocketsDo $ do
                                                 }
                                atomically $ writeTVar (csContactList state) (newContact : contactList)
                                -- save contact list to file
-                               _ <- forkIO $ saveContactList (csContactListDb state) (newContact : contactList)
+                               _ <- forkIO $ saveContactList state (newContact : contactList)
                                putStrLn (who ++ " was added to contact list.")
                          else
                              putStrLn (who ++ " is already is your contact list !")
@@ -177,7 +159,7 @@ hpt hostname = withSocketsDo $ do
                              do
                                let newContactList = filter ((/= who) . contactUserName) contactList
                                atomically $ writeTVar (csContactList state) newContactList
-                               _ <- forkIO $ saveContactList (csContactListDb state) newContactList
+                               _ <- forkIO $ saveContactList state newContactList
                                putStrLn (who ++ " has been removed from your contact list !")
                          loop state
                   ("/switchto":who:_) ->
@@ -200,6 +182,35 @@ talkDispatcher state authSuccess (context, servaddr) = do
   putStr "Please identify.\nUsername : "
   username <- getLine
   password <- (B8.pack . fromMaybe "") `fmap` runInputT defaultSettings (getPassword Nothing "Password : ")
+
+  -- Parse contact list
+  putStr "Reading contact list..."
+  db <- getContactListDb username
+  contactListDb <- case db of
+                     Left err ->
+                         do
+                           failed ("failed\n" ++ err ++ "\n")
+                           exitFailure
+                     Right file ->
+                         return file
+  success "success\n"
+
+  -- Creating contact list from file
+  putStr "Building contact list..."
+  raw <- withFile contactListDb ReadMode $ \h ->
+         do !contents <- L.hGetContents h
+            return contents
+
+  let list = case L.null raw of
+               True -> []
+               False -> decode raw :: ContactList
+
+  -- Modifying state to take contact list into account
+  atomically $ do
+    writeTVar (csContactList state) list
+    writeTVar (csContactListDb state) contactListDb
+  success "success\n"
+
   putStrLn "\nIdentifying to dispatcher..."
   send context (L.toStrict $ encode (Born username password))
 

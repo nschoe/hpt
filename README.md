@@ -26,17 +26,9 @@ application, it is, period.
 ## TODO ##
 
 - __Encrypt the registered.db file in the dispatcher__
-- **Make .user/ directories in .hpt/ (data app) to store the user's
-  contact list (and later config ?) and _encrypt_ this contact list
-  with the user's password, so that only when he logs in, can he
-  access the contact list (it's nobody else's business to peer into
-  one's contact list)**
+- __Encrypt the user's contact list with his password (it is nobody
+  else's business but him to peer into his contact list)__
 - __Use SSL/TLS encrypted communications between peers__
-- Re-write adding and deletion of contact functions to use the state
-  and lock it while saving the new contact list because on multiple,
-  quick add or deletions of contacts, it is possible of a concurrent
-  access to the contact list database which would result in an
-  inconsistant state
 - Write a function to remove from alive the users whose last Alive
   request is more than XX time
 - Rewrite functions with Exception handling (e.g. getPrivateKeyFile,

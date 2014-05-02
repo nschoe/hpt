@@ -120,8 +120,8 @@ data ClientState = ClientState {
       csConversations :: TVar (Map.Map UserName Conversation)  -- ^ list of started conversations
     , csContactList   :: TVar (ContactList)                    -- ^ the user's contact list
     , csCommands      :: TChan Command                         -- ^ commands to send to the dispatcher
-    , csCurrentChat   :: Maybe UserName                        -- ^ current active conversation
-    , csContactListDb :: FilePath                              -- ^ file to save the contact list to
+    , csCurrentChat   :: TVar (Maybe UserName)                 -- ^ current active conversation
+    , csContactListDb :: TVar FilePath                         -- ^ file to save the contact list to
     }
                    deriving (Eq)
 -- | Describe am opened conversation with a contact
