@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BangPatterns      #-}
 
 module Main (main) where
 
@@ -7,12 +8,12 @@ import           Control.Concurrent (forkIO, threadDelay)
 import           Control.Concurrent.MVar (newEmptyMVar, takeMVar, putMVar, MVar)
 import           Control.Concurrent.STM (atomically)
 import           Control.Concurrent.STM.TChan (newTChan, readTChan)
-import           Control.Concurrent.STM.TVar (newTVar)
+import           Control.Concurrent.STM.TVar (newTVar, readTVar, writeTVar)
 import Control.Monad (when, forever)
 import           Data.Binary
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8 (putStrLn, getLine, pack, dropWhile, words, getLine)
-import qualified Data.ByteString.Lazy as L (toStrict, fromStrict)
+import qualified Data.ByteString.Lazy as L (toStrict, fromStrict, null, hGetContents)
 import           Data.CertificateStore
 import           Data.Char (isSpace)
 import qualified Data.Map as Map (empty)
@@ -24,9 +25,10 @@ import           Network.TLS.Extra (fileReadPrivateKey, fileReadCertificate)
 import           System.Certificate.X509.Unix
 import           System.Console.Haskeline (runInputT, getPassword, defaultSettings)
 import           System.Environment (getArgs)
-import           System.IO (hSetBuffering, BufferMode(..), stdout)
+import           System.IO (hSetBuffering, BufferMode(..), IOMode(..), stdout, withFile)
 import           Tools
 import           Types
+import           System.Exit (exitFailure)
 
 {- | hpt main function.
    Start the client and the server parts of hpt.
@@ -67,10 +69,33 @@ hpt hostname = withSocketsDo $ do
         let clientSettings = makeClientSettings [] (Just hostname) (certificateStore <> cStore)
         success "success.\n"
 
+        -- Parse contact list
+        putStr "Reading contact list..."
+        db <- getContactListDb
+        contactListDb <- case db of
+                    Left err ->
+                        do
+                          failed ("failed\n" ++ err ++ "\n")
+                          exitFailure
+                    Right file ->
+                        return file
+        success "success\n"
+
+        -- Creating contact list from file
+        putStr "Building contact list..."
+        raw <- withFile contactListDb ReadMode $ \h ->
+               do !contents <- L.hGetContents h
+                  return contents
+
+        let list = case L.null raw of
+                            True -> []
+                            False -> decode raw :: ContactList
+        success "success\n"
+
         -- Create internal state
         putStr "Initializing internal state..."
         conversations <- atomically $ newTVar (Map.empty)
-        contactList   <- atomically $ newTVar []
+        contactList   <- atomically $ newTVar list
         chanCommands  <- atomically $ newTChan
 
         let state = ClientState {
@@ -78,6 +103,7 @@ hpt hostname = withSocketsDo $ do
                                , csContactList   = contactList
                                , csCommands      = chanCommands
                                , csCurrentChat   = Nothing
+                               , csContactListDb = contactListDb
                                }
         success "success\n"
 
@@ -105,7 +131,12 @@ hpt hostname = withSocketsDo $ do
                   ("/help":_) ->
                       do putStrLn ("Must display help")
                   ("/list":_) ->
-                      do putStrLn ("Must list contacts")
+                      do contactList <- atomically $ readTVar (csContactList state)
+                         let output1 = "\nContact list (" ++ show (length contactList) ++ " contacts) : [unread messages]\n"
+                         let output2 = output1 ++ (replicate (length output1 - 2) '=') ++ "\n"
+                         let list = map ((++ " [not implemented]") . contactUserName) contactList
+                         let output = output2 ++ (unlines list)
+                         putStrLn output
                          loop state
                   ("/start":who:_) ->
                       do putStrLn ("Must start conversation with " ++ who)
@@ -120,10 +151,34 @@ hpt hostname = withSocketsDo $ do
                       do putStrLn ("Must ping " ++ who)
                          loop state
                   ("/add":who:_) ->
-                      do putStrLn ("Must add new contact : " ++ who)
+                      do contactList <- atomically $ readTVar (csContactList state)
+                         let mContact = contactLookup who contactList
+                         if (isNothing mContact) then
+                             do
+                               -- create "empty" contact to be filled by the next Alive request
+                               let newContact = Contact {
+                                                  contactUserName = who
+                                                , contactStatus   = NotAvailable
+                                                , contactIpAddr   = ""
+                                                }
+                               atomically $ writeTVar (csContactList state) (newContact : contactList)
+                               -- save contact list to file
+                               _ <- forkIO $ saveContactList (csContactListDb state) (newContact : contactList)
+                               putStrLn (who ++ " was added to contact list.")
+                         else
+                             putStrLn (who ++ " is already is your contact list !")
                          loop state
                   ("/del":who:_) ->
-                      do putStrLn ("Must delete contact : " ++ who)
+                      do contactList <- atomically $ readTVar (csContactList state)
+                         let mContact = contactLookup who contactList
+                         if (isNothing mContact) then
+                             putStrLn (who ++ " is not in your contact list !")
+                         else
+                             do
+                               let newContactList = filter ((/= who) . contactUserName) contactList
+                               atomically $ writeTVar (csContactList state) newContactList
+                               _ <- forkIO $ saveContactList (csContactListDb state) newContactList
+                               putStrLn (who ++ " has been removed from your contact list !")
                          loop state
                   ("/switchto":who:_) ->
                       do putStrLn ("Must switch active conversation to : " ++ who)
@@ -167,7 +222,12 @@ talkDispatcher state authSuccess (context, servaddr) = do
 
                       -- fork thread to keep alive
                       putStr "Starting keep-alive routine..."
-                      keepAlive_tId <- forkIO $ forever $ keepAlive context state >> threadDelay ((9 * 10^6) :: Int)
+                      keepAlive_tId <- forkIO $
+                         do
+                           threadDelay ((10^6) :: Int)
+                           forever $ do
+                             keepAlive context state
+                             threadDelay ((9 * 10^6) :: Int)
                       success "success\n"
 
                       -- loop to handle client's input (e.g. log out requests)

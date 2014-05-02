@@ -19,13 +19,25 @@ application, it is, period.
 ## Changelog ##
 
 - v0.1.0
+    - Communications with dispatcher are SSL/TLS encrypted 
     - Clients can register a new name and connect to dispatcher
-
+    - Clients can add and delete a contact
 
 ## TODO ##
 
+- __Encrypt the registered.db file in the dispatcher__
+- **Make .user/ directories in .hpt/ (data app) to store the user's
+  contact list (and later config ?) and _encrypt_ this contact list
+  with the user's password, so that only when he logs in, can he
+  access the contact list (it's nobody else's business to peer into
+  one's contact list)**
+- __Use SSL/TLS encrypted communications between peers__
+- Re-write adding and deletion of contact functions to use the state
+  and lock it while saving the new contact list because on multiple,
+  quick add or deletions of contacts, it is possible of a concurrent
+  access to the contact list database which would result in an
+  inconsistant state
 - Write a function to remove from alive the users whose last Alive
   request is more than XX time
 - Rewrite functions with Exception handling (e.g. getPrivateKeyFile,
   etc)
-- Encrypt the registered.db file in the dispatcher
