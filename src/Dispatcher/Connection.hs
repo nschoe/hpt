@@ -9,6 +9,7 @@ module Dispatcher.Connection (
                              , removeFromAlive
                              ) where
 import           Control.Concurrent.STM
+import Network.Socket.Internal (SockAddr(..))
 import           Control.Concurrent.STM.TVar
 import           Data.Binary (encode, decode)
 import qualified Data.ByteString as B
@@ -113,8 +114,8 @@ getRegisteredDb = do
    The returned ByteString is the message to send back the client
    The Either String String is for the dispatcher to determine if the auth failed (Left) or not (Right)
 -}
-checkAuth :: DispatcherState -> DispatcherRequest -> UTCTime -> STM (Either String String, B.ByteString)
-checkAuth state (Born username hashpassword) currentTime = do
+checkAuth :: DispatcherState -> DispatcherRequest -> UTCTime -> SockAddr -> STM (Either String String, B.ByteString)
+checkAuth state (Born username hashpassword) currentTime sockaddr = do
   -- Get the two maps
   clientsmap <- readTVar (dsAlive state)
   regmap     <- readTVar (dsRegistered state)
@@ -134,7 +135,9 @@ checkAuth state (Born username hashpassword) currentTime = do
           let Just storedPwdHash = Map.lookup username regmap
           if hashpassword == storedPwdHash then do
               -- Yes (passwords match) : log in
-              let newEntry = DispatcherEntry "ip addr" currentTime Available
+--              let (SockAddrInet6 _ _ ip _) = sockaddr
+              let (SockAddrInet _ ip) = sockaddr
+              let newEntry = DispatcherEntry (show ip) currentTime Available
               writeTVar (dsAlive state) (Map.insert username newEntry clientsmap)
               return (
                        Right $ username ++ " successfully logged in.\n"
@@ -157,7 +160,7 @@ checkAuth state (Born username hashpassword) currentTime = do
                )
         
 -- Can't happen (check with isBornRequest before
-checkAuth _ _ _ = error "The authentification check is done only upon connection (i.e. on Born request)"
+checkAuth _ _ _ _ = error "The authentification check is done only upon connection (i.e. on Born request)"
 
 -- | Remove a username from the alive clients map.
 -- Called upon logout requests of loss of connection

@@ -132,7 +132,8 @@ server = withSocketsDo $ do
   -- Start the server
   hSetBuffering stdout NoBuffering
   printf "Starting dispatcher on port %s...\n\n" port
-  server_tId <- forkIO $ serve servSettings HostIPv6 port (handleClient state)
+--  server_tId <- forkIO $ serve servSettings HostIPv6 port (handleClient state)
+  server_tId <- forkIO $ serve servSettings HostIPv4 port (handleClient state)
 
   -- Start the thread that saves registered user list every 5 minutes
   saveRegistered_tId <- forkIO $ forever $ threadDelay ((5*60 * 10^6)::Int) >> saveDb state dbFile
@@ -185,7 +186,7 @@ handleClient state (context, sockaddr) = do
              let (Born username _) = decodedReq
              success "success\n"            
              now <- getCurrentTime
-             (logMsg, answer) <- atomically $ checkAuth state decodedReq now
+             (logMsg, answer) <- atomically $ checkAuth state decodedReq now sockaddr
              send context answer
              case logMsg of
                -- 'Left' means the authentification did not succeed
