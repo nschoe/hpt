@@ -5,23 +5,28 @@ module Types (
              , ContactList
              , HashPassword
              , IpAddr
-             , Message
-             , Contact
+             , Message(..)
+             , Contact(..)
              , Status(..)
              , DispatcherRequest(..)
              , DispatcherAnswer(..)
-             , Command
+             , Command(..)
              , DispatcherEntry(..)
              , DispatcherState(..)
+             , ClientState(..)
+             , Conversation(..)
              ) where
 
 import           Control.Concurrent.STM.TVar (TVar)
+import Control.Concurrent.STM.TChan (TChan)
 import qualified Crypto.Hash.SHA512 as SHA512
 import           Data.Binary
 import qualified Data.ByteString as B (ByteString)
+import  Data.Dequeue (BankersDequeue)
 import qualified Data.Map.Strict as Map (Map)
 import           Data.Time.Clock (UTCTime)
 import           Network.Simple.TCP.TLS (Context)
+import Network.Simple.TCP (Socket)
 import GHC.Generics (Generic)
 -- | Every type used in hpt and hpt-dispatcher
 
@@ -29,7 +34,7 @@ type UserName     = String
 type ContactList  = [Contact]
 type HashPassword = B.ByteString
 type IpAddr       = String
-type Message      = B.ByteString
+
 
 -- | Contact data type : very little information is stored
 data Contact = Contact {
@@ -49,10 +54,16 @@ data Status =
 
 instance Binary Status
 
+-- | Different types of messages
+data Message =
+      Notice String               -- ^ Simple notice (e.g. a contact logs int/out, etc)
+    | PingMe                      -- ^ A ping message to wake up a not-responding contact
+    | Message String              -- ^ plain text message from a contact
+      deriving (Show, Eq)
 -- | Requests clients send the dispatcher
 data DispatcherRequest =
       Born UserName HashPassword  -- ^ identification request (registers if user name doesn't exist)
-    | Alive ContactList           -- ^ tell dispatcher we're connected (alive) and request contacts status
+    | Alive [UserName]            -- ^ tell dispatcher we're connected (alive) and request contacts status
     | Suicide                     -- ^ tell dispatcher we want to disconnect (die) so that he can close socket
       deriving (Eq, Show, Generic)
 
@@ -64,6 +75,7 @@ data DispatcherAnswer =
     | BornKO (Maybe String)    -- ^ notify client that his Born request failed
     | ReportStatus ContactList -- ^ tell client the status of his contact list
     | Die                      -- ^ tell client its Suicide (logout) request is ok, can close socket
+    | Error (Maybe String)     -- ^ report an error to the client
       deriving (Eq, Show, Generic)
 
 instance Binary DispatcherAnswer
@@ -93,8 +105,27 @@ data DispatcherState = DispatcherState {
 --instance Binary (Map.Map UserName HashPassword)
 
 -- | Type to represent the (very little) information stored by the dispatcher
-data DispatcherEntry = DispatcherEntry
-                       IpAddr                -- ^ user's ip address
-                       UTCTime               -- ^ timestamp of last activity (Alive request)
-                       Status                -- ^ user's current status
+data DispatcherEntry = DispatcherEntry {
+      deIpAddr :: IpAddr                -- ^ user's ip address
+    , deTime   :: UTCTime               -- ^ timestamp of last activity (Alive request)
+    , deStatus :: Status                -- ^ user's current status
+    }
                        deriving (Show, Eq)
+{- | Internal state maintained by the client :
+   A map from user name to context (opened conversations with contacts)
+   The contact list
+   A TChan to receive all messages from every conversations
+-}
+data ClientState = ClientState {
+      csConversations :: TVar (Map.Map UserName Conversation)  -- ^ list of started conversations
+    , csContactList   :: TVar (ContactList)                    -- ^ the user's contact list
+    , csCommands      :: TChan Command                         -- ^ commands to send to the dispatcher
+    , csCurrentChat   :: Maybe UserName                        -- ^ current active conversation
+    }
+                   deriving (Eq)
+-- | Describe am opened conversation with a contact
+data Conversation = Conversation {
+      convContext :: Socket                    -- ^ 'socket' to send and receive message. TEMPORARY : replace with SSL/TLS Context
+    , convHistory :: BankersDequeue Message    -- ^ list of messages
+    , convNbNew   :: Int                       -- ^ nb of new messages since last read
+}

@@ -3,9 +3,11 @@ module Tools (
              , version
              , success
              , failed
+             , contactLookup
              ) where
 
 import           System.Console.ANSI
+import Types
 
 -- | Define some useful functions and wrappers for hpt
 
@@ -38,3 +40,9 @@ failed str = do
   setSGR [SetColor Foreground Vivid Red]
   putStr str
   setSGR [Reset]
+
+-- | ContactList version of lookup
+contactLookup :: UserName -> ContactList -> Maybe Contact
+contactLookup _ [] = Nothing
+contactLookup username (x:xs) | username == contactUserName x = Just x
+                              | otherwise                     = contactLookup username xs

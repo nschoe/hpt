@@ -1,17 +1,34 @@
 module Client.Connection (
-                               port
-                             , privateKeyFile
-                             , certificateFile
-                             ) where
+                           port
+                         , clientPort
+                         , keepAlive
+                         ) where
 
--- | Port thatthe dispatcher listens to for incoming connection
+import Control.Concurrent.STM (atomically)
+import Control.Concurrent.STM.TVar (readTVar)
+import qualified Data.ByteString.Lazy as L (toStrict)
+import Data.Binary (encode)
+import Network.Simple.TCP.TLS (Context, send)
+import Types (ClientState(..), Contact(..), DispatcherRequest(..))
+
+-- | Port on which the dispatcher listens to for incoming connection
 port :: String
 port = "1089"
 
--- | Path to the file containing the private key
-privateKeyFile :: FilePath
-privateKeyFile = "/home/nschoe/workspace/haskell/hpt/src/Client/ssl/privkey.pem"
+-- | Port on which the user's server part listens to for incoming connection
+clientPort :: String
+clientPort = "9801"
 
--- | Path to the file containing the x509 certificate
-certificateFile :: FilePath
-certificateFile = "/home/nschoe/workspace/haskell/hpt/src/Client/ssl/cacert.pem"
+-- | Maintains a connection with the dispatcher by sending Alive requests
+-- along with contacts status request
+keepAlive :: Context -> ClientState -> IO ()
+keepAlive context state = do
+  -- get contact list
+  contacts <- atomically $ readTVar (csContactList state)
+  
+  -- extract list of usernames
+  let names = map contactUserName contacts
+
+  -- Build Alive request and send it to the dispatcher
+  let req = Alive names
+  send context (L.toStrict $ encode req)
